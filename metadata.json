@@ -1,0 +1,6 @@
+{
+  "name": "Medimate",
+  "description": "Smart medicine segregation and caregiver alert system dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

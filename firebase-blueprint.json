@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "A health profile (family member) managed by a user",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "age": { "type": "number" },
+        "gender": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["name", "age", "gender", "ownerId"]
+    },
+    "Schedule": {
+      "title": "Schedule",
+      "description": "Medication schedule for a patient",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string" },
+        "time": { "type": "string" },
+        "label": { "type": "string" },
+        "pills": { "type": "array" },
+        "status": { "type": "string" },
+        "mealTiming": { "type": "string" }
+      },
+      "required": ["patientId", "time", "label", "pills", "status"]
+    },
+    "Vital": {
+      "title": "Vital",
+      "description": "Biometric reading for a patient",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string" },
+        "value": { "type": "number" },
+        "value2": { "type": "number" },
+        "unit": { "type": "string" }
+      },
+      "required": ["patientId", "timestamp", "type", "value", "unit"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "Care circle contact for a patient",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string" },
+        "name": { "type": "string" },
+        "relation": { "type": "string" },
+        "phone": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "required": ["patientId", "name", "relation", "phone", "type"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Activity log entry",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "event": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "required": ["timestamp", "event", "type"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Profiles for all system users"
+    },
+    "patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Family member profiles"
+    },
+    "schedules/{scheduleId}": {
+      "schema": "Schedule",
+      "description": "Global schedules (filtered by patientId)"
+    },
+    "vitals/{vitalId}": {
+      "schema": "Vital",
+      "description": "Global vital readings (filtered by patientId)"
+    },
+    "contacts/{contactId}": {
+      "schema": "Contact",
+      "description": "Global contacts (filtered by patientId)"
+    },
+    "logs/{logId}": {
+      "schema": "Log",
+      "description": "Global activity logs"
+    },
+    "admins/{userId}": {
+       "schema": { "type": "object", "properties": { "email": { "type": "string" } } },
+       "description": "Explicit admin list"
+    }
+  }
+}

@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Catch-all default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email in ['aditya.mishra123546@gmail.com', 'naitikrsg@gmail.com']
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+
+    function isValidUser(data) {
+      return data.uid == request.auth.uid 
+        && data.email is string && data.email.size() > 0 
+        && data.displayName is string 
+        && data.role in ['user', 'admin']
+        && (data.role == 'user' || isAdmin()); // Allow admin role if already considered admin (bootstrap)
+    }
+
+    function isValidPatient(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.age is number && data.age >= 0 && data.age <= 150
+        && data.gender is string && data.gender.size() > 0
+        && data.ownerId == request.auth.uid;
+    }
+
+    function isValidSchedule(data) {
+      return data.patientId is string && isValidId(data.patientId)
+        && data.time is string && data.time.matches('^[0-2][0-9]:[0-5][0-9]$')
+        && data.label is string && data.label.size() <= 100
+        && data.pills is list && data.pills.size() <= 20
+        && data.status in ['pending', 'taken', 'missed']
+        && (data.mealTiming in ['before', 'after', 'none'] || !('mealTiming' in data));
+    }
+
+    function isValidVital(data) {
+      return data.patientId is string && isValidId(data.patientId)
+        && data.timestamp is string // Simplification: we expect ISO string
+        && data.type in ['blood_pressure', 'blood_sugar', 'heart_rate', 'weight']
+        && data.value is number
+        && data.unit is string && data.unit.size() <= 20;
+    }
+
+    function isValidContact(data) {
+      return data.patientId is string && isValidId(data.patientId)
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 30
+        && data.type in ['doctor', 'family', 'emergency'];
+    }
+
+    function isValidLog(data) {
+      return data.timestamp is string
+        && data.event is string && data.event.size() <= 500
+        && data.type in ['info', 'warning', 'alert', 'success'];
+    }
+
+    // --- Match Groups ---
+
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      // Only existing admins can add new admins, or it's managed via console
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().keys().size() == 4;
+      allow update: if (isOwner(userId) || isAdmin()) 
+        && incoming().uid == existing().uid 
+        && incoming().email == existing().email
+        && (isAdmin() || (incoming().role == existing().role)) // Only admin can change roles
+        && incoming().keys().size() == 4;
+    }
+
+    match /patients/{patientId} {
+      allow get: if isAdmin() || isOwner(existing().ownerId);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && isValidPatient(incoming()) && incoming().keys().size() == 4;
+      allow update: if (isAdmin() || isOwner(existing().ownerId)) 
+        && isValidPatient(incoming())
+        && incoming().ownerId == existing().ownerId; // Owner cannot be transferred
+      allow delete: if isAdmin() || isOwner(existing().ownerId);
+    }
+
+    // Shared check for patient ownership
+    function canAccessPatient(pId) {
+      return isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/patients/$(pId)).data.ownerId == request.auth.uid);
+    }
+
+    match /schedules/{scheduleId} {
+      allow read: if canAccessPatient(resource.data.patientId);
+      allow create: if isSignedIn() && isValidSchedule(incoming()) && canAccessPatient(incoming().patientId);
+      allow update: if (isAdmin() || canAccessPatient(existing().patientId)) && isValidSchedule(incoming());
+      allow delete: if isAdmin() || canAccessPatient(existing().patientId);
+    }
+
+    match /vitals/{vitalId} {
+      allow read: if canAccessPatient(resource.data.patientId);
+      allow create: if isSignedIn() && isValidVital(incoming()) && canAccessPatient(incoming().patientId);
+      allow update: if (isAdmin() || canAccessPatient(existing().patientId)) && isValidVital(incoming());
+      allow delete: if isAdmin() || canAccessPatient(existing().patientId);
+    }
+
+    match /contacts/{contactId} {
+      allow read: if canAccessPatient(resource.data.patientId);
+      allow create: if isSignedIn() && isValidContact(incoming()) && canAccessPatient(incoming().patientId);
+      allow update: if (isAdmin() || canAccessPatient(existing().patientId)) && isValidContact(incoming());
+      allow delete: if isAdmin() || canAccessPatient(existing().patientId);
+    }
+
+    match /logs/{logId} {
+      allow read: if !('patientId' in resource.data) || canAccessPatient(resource.data.patientId);
+      allow create: if isSignedIn() && isValidLog(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}
